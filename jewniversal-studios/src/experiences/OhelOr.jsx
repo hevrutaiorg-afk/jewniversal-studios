@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const ease = (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 
 const hexToRgb = (hex) => ({
   r: parseInt(hex.slice(1, 3), 16),
@@ -54,6 +55,117 @@ const NIGHT_OFFERINGS = [
   { icon: "◯", text: "Threshold & sacred atmosphere" },
 ];
 
+// Custom touch+mouse slider — works on all browsers and devices
+function SanctuaryDial({ value, onChange }) {
+  const trackRef = useRef(null);
+  const isDragging = useRef(false);
+
+  const getValueFromEvent = (clientX) => {
+    const track = trackRef.current;
+    if (!track) return value;
+    const rect = track.getBoundingClientRect();
+    const pct = clamp((clientX - rect.left) / rect.width, 0, 1);
+    return pct;
+  };
+
+  // Mouse events
+  const onMouseDown = (e) => {
+    isDragging.current = true;
+    onChange(getValueFromEvent(e.clientX));
+    e.preventDefault();
+  };
+  const onMouseMove = (e) => {
+    if (!isDragging.current) return;
+    onChange(getValueFromEvent(e.clientX));
+  };
+  const onMouseUp = () => { isDragging.current = false; };
+
+  // Touch events
+  const onTouchStart = (e) => {
+    isDragging.current = true;
+    onChange(getValueFromEvent(e.touches[0].clientX));
+    e.preventDefault();
+  };
+  const onTouchMove = (e) => {
+    if (!isDragging.current) return;
+    onChange(getValueFromEvent(e.touches[0].clientX));
+    e.preventDefault();
+  };
+  const onTouchEnd = () => { isDragging.current = false; };
+
+  useEffect(() => {
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  });
+
+  const eased = ease(value);
+
+  return (
+    <div
+      ref={trackRef}
+      onMouseDown={onMouseDown}
+      onTouchStart={onTouchStart}
+      style={{
+        position: "relative",
+        height: "60px",
+        display: "flex",
+        alignItems: "center",
+        cursor: "pointer",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        touchAction: "none",
+      }}
+    >
+      {/* Track background */}
+      <div style={{
+        width: "100%", height: "4px", borderRadius: "2px",
+        background: eased < 0.5
+          ? "linear-gradient(to right, rgba(255,180,50,0.4), rgba(139,105,20,0.15))"
+          : "linear-gradient(to right, rgba(201,168,76,0.4), rgba(100,140,255,0.4))",
+        transition: "background 0.8s ease",
+        position: "relative",
+      }}>
+        {/* Fill */}
+        <div style={{
+          position: "absolute", left: 0, top: 0,
+          height: "4px", borderRadius: "2px",
+          width: `${value * 100}%`,
+          background: eased < 0.5
+            ? "linear-gradient(to right, #FFB830, #C9A84C)"
+            : "linear-gradient(to right, #C9A84C, #6490FF)",
+        }} />
+      </div>
+
+      {/* Sun / Moon thumb */}
+      <div style={{
+        position: "absolute",
+        left: `calc(${value * 100}% - 24px)`,
+        top: "50%", transform: "translateY(-50%)",
+        width: "48px", height: "48px",
+        borderRadius: "50%",
+        background: eased < 0.5
+          ? "radial-gradient(circle at 38% 38%, #FFF0A0, #E8A830 40%, #C07010)"
+          : "radial-gradient(circle at 38% 38%, #F0F0FF, #C8D0F0 40%, #7080B0)",
+        boxShadow: eased < 0.5
+          ? `0 0 ${lerp(14, 30, eased)}px rgba(255,180,50,0.9)`
+          : `0 0 ${lerp(10, 26, eased)}px rgba(100,140,255,0.9)`,
+        transition: "background 0.8s ease, box-shadow 0.5s ease",
+        pointerEvents: "none",
+        // Larger invisible touch target
+        outline: "12px solid transparent",
+      }} />
+    </div>
+  );
+}
+
 export default function OhelOr() {
   const navigate = useNavigate();
   const [t, setT] = useState(0);
@@ -75,6 +187,11 @@ export default function OhelOr() {
   const offerings = t < 0.5 ? DAY_OFFERINGS : NIGHT_OFFERINGS;
   const offeringLabel = t < 0.5 ? "Day Circle — What is offered" : "Night Sanctuary — What awaits";
 
+  const handleDialChange = (val) => {
+    setT(val);
+    if (!hasInteracted) setHasInteracted(true);
+  };
+
   return (
     <div style={{
       minHeight: "100vh", background: bg, color: textPrimary,
@@ -83,13 +200,13 @@ export default function OhelOr() {
       position: "relative", overflow: "hidden",
     }}>
       <style>{`
-        @keyframes breathe { 0%,100%{opacity:0.7} 50%{opacity:1} }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+        @keyframes breathe { 0%,100%{opacity:0.6} 50%{opacity:1} }
         * { box-sizing: border-box; }
       `}</style>
 
       <Stars opacity={Math.max(0, (t - 0.4) * 2)} />
 
+      {/* Ambient glow */}
       <div style={{
         position: "fixed", inset: 0, pointerEvents: "none",
         background: eased < 0.5
@@ -98,6 +215,7 @@ export default function OhelOr() {
         transition: "background 1s ease", zIndex: 0,
       }} />
 
+      {/* Background Hebrew Or */}
       <div style={{
         position: "fixed", top: "50%", left: "50%",
         transform: "translate(-50%, -50%)",
@@ -168,30 +286,35 @@ export default function OhelOr() {
           display: "flex", flexDirection: "column", alignItems: "center",
           padding: "3vh 2rem 2vh",
         }}>
-
+          {/* Instruction / phase label */}
           <div style={{
             fontSize: "clamp(1.1rem, 2vw, 1.4rem)",
             fontStyle: "italic", color: accent,
             letterSpacing: "0.08em", marginBottom: "2rem",
-            textAlign: "center", minHeight: "2em",
+            textAlign: "center", minHeight: "2.5em",
             transition: "color 0.6s ease",
             animation: !hasInteracted ? "breathe 3s infinite ease" : "none",
+            padding: "0 1rem",
           }}>
-            {!hasInteracted ? "Drag the light to enter the sanctuary ↓" : phase}
+            {!hasInteracted
+              ? <>Drag or tap the light to enter the sanctuary<br /><span style={{ fontSize: "1.5rem" }}>☀ ——————— ☽</span></>
+              : phase
+            }
           </div>
 
           {/* Dial box */}
           <div style={{
             width: "min(580px, 92vw)",
-            padding: "2.5rem 3rem",
+            padding: "2rem 2.5rem 2rem",
             border: `2px solid ${borderC}`,
             background: eased < 0.5 ? "rgba(139,105,20,0.05)" : "rgba(100,140,255,0.05)",
             transition: "border-color 0.6s ease, background 0.6s ease",
           }}>
 
+            {/* Day / Night labels */}
             <div style={{
               display: "flex", justifyContent: "space-between",
-              marginBottom: "1.75rem",
+              marginBottom: "1.5rem", alignItems: "center",
             }}>
               <span style={{
                 display: "flex", alignItems: "center", gap: "0.5rem",
@@ -199,12 +322,12 @@ export default function OhelOr() {
                 color: textSub, opacity: t < 0.5 ? 1 : 0.4,
                 transition: "opacity 0.5s, color 0.6s ease",
               }}>
-                <span style={{ fontSize: "clamp(1.4rem, 2.5vw, 1.8rem)" }}>☀</span> Day
+                <span style={{ fontSize: "clamp(1.5rem, 2.5vw, 2rem)" }}>☀</span> Day
               </span>
               <span style={{
                 fontSize: "clamp(0.8rem, 1.3vw, 1rem)",
-                fontStyle: "italic", color: textSub, opacity: 0.6,
-                alignSelf: "center", transition: "color 0.6s ease",
+                fontStyle: "italic", color: textSub, opacity: 0.5,
+                transition: "color 0.6s ease", textAlign: "center",
               }}>
                 {t < 0.5 ? "slide toward night →" : "← slide toward day"}
               </span>
@@ -214,74 +337,37 @@ export default function OhelOr() {
                 color: textSub, opacity: t >= 0.5 ? 1 : 0.4,
                 transition: "opacity 0.5s, color 0.6s ease",
               }}>
-                Night <span style={{ fontSize: "clamp(1.4rem, 2.5vw, 1.8rem)" }}>☽</span>
+                Night <span style={{ fontSize: "clamp(1.5rem, 2.5vw, 2rem)" }}>☽</span>
               </span>
             </div>
 
-            <div style={{ position: "relative", height: "50px", display: "flex", alignItems: "center" }}>
-              <div style={{
-                width: "100%", height: "4px", borderRadius: "2px",
-                background: eased < 0.5
-                  ? "linear-gradient(to right, rgba(255,180,50,0.5), rgba(139,105,20,0.2))"
-                  : "linear-gradient(to right, rgba(201,168,76,0.4), rgba(100,140,255,0.5))",
-                transition: "background 0.8s ease", position: "relative",
-              }}>
-                <div style={{
-                  position: "absolute", left: 0, top: 0, height: "4px", borderRadius: "2px",
-                  width: `${t * 100}%`,
-                  background: eased < 0.5
-                    ? "linear-gradient(to right, #FFB830, #C9A84C)"
-                    : "linear-gradient(to right, #C9A84C, #6490FF)",
-                  transition: "width 0.05s, background 0.8s ease",
-                }} />
-              </div>
+            {/* The custom dial */}
+            <SanctuaryDial value={t} onChange={handleDialChange} />
 
-              <div style={{
-                position: "absolute",
-                left: `calc(${t * 100}% - 22px)`,
-                top: "50%", transform: "translateY(-50%)",
-                width: "44px", height: "44px", borderRadius: "50%",
-                background: eased < 0.5
-                  ? "radial-gradient(circle at 38% 38%, #FFF0A0, #E8A830 40%, #C07010)"
-                  : "radial-gradient(circle at 38% 38%, #F0F0FF, #C8D0F0 40%, #7080B0)",
-                boxShadow: eased < 0.5
-                  ? `0 0 ${lerp(14, 28, eased)}px rgba(255,180,50,0.8)`
-                  : `0 0 ${lerp(10, 24, eased)}px rgba(100,140,255,0.9)`,
-                transition: "background 0.8s ease, box-shadow 0.5s ease",
-                pointerEvents: "none", zIndex: 2,
-              }} />
-
-              <input
-                type="range" min="0" max="100"
-                value={Math.round(t * 100)}
-                onChange={(e) => {
-                  setT(e.target.value / 100);
-                  if (!hasInteracted) setHasInteracted(true);
-                }}
-                style={{
-                  position: "absolute", inset: 0, width: "100%",
-                  opacity: 0, cursor: "pointer", height: "50px",
-                  margin: 0, zIndex: 3,
-                }}
-              />
-            </div>
-
+            {/* Time markers */}
             <div style={{
-              display: "flex", justifyContent: "space-between", marginTop: "1.25rem",
+              display: "flex", justifyContent: "space-between",
+              marginTop: "1rem",
             }}>
               {["Dawn", "Morning", "Afternoon", "Dusk", "Evening", "Night"].map((label, i, arr) => (
-                <div key={i} style={{
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: "5px",
-                  opacity: Math.abs(t - i / (arr.length - 1)) < 0.15 ? 1 : 0.25,
-                  transition: "opacity 0.4s ease",
-                }}>
+                <div
+                  key={i}
+                  onClick={() => handleDialChange(i / (arr.length - 1))}
+                  style={{
+                    display: "flex", flexDirection: "column",
+                    alignItems: "center", gap: "5px", cursor: "pointer",
+                    opacity: Math.abs(t - i / (arr.length - 1)) < 0.15 ? 1 : 0.3,
+                    transition: "opacity 0.4s ease",
+                    padding: "4px 2px",
+                  }}
+                >
                   <div style={{
                     width: "5px", height: "5px", borderRadius: "50%",
                     background: textSub, transition: "background 0.6s ease",
                   }} />
                   <span style={{
-                    fontSize: "clamp(0.7rem, 1.1vw, 0.85rem)",
-                    letterSpacing: "0.1em", textTransform: "uppercase",
+                    fontSize: "clamp(0.65rem, 1vw, 0.8rem)",
+                    letterSpacing: "0.08em", textTransform: "uppercase",
                     color: textSub, transition: "color 0.6s ease",
                   }}>
                     {label}
@@ -290,15 +376,26 @@ export default function OhelOr() {
               ))}
             </div>
           </div>
+
+          {/* Tap hint for mobile */}
+          <div style={{
+            marginTop: "1rem",
+            fontSize: "clamp(0.75rem, 1.2vw, 0.9rem)",
+            fontStyle: "italic", color: textSub, opacity: 0.5,
+            transition: "color 0.6s ease",
+          }}>
+            tap a time of day or drag the light
+          </div>
         </div>
 
         {/* Offerings */}
-        <div style={{ maxWidth: "700px", margin: "0 auto", padding: "3vh 2rem 4vh", width: "100%" }}>
+        <div style={{ maxWidth: "700px", margin: "0 auto", padding: "2vh 2rem 4vh", width: "100%" }}>
           <div style={{
             textAlign: "center",
             fontSize: "clamp(0.8rem, 1.3vw, 1rem)",
             letterSpacing: "0.25em", textTransform: "uppercase",
-            color: accent, marginBottom: "1.5rem", transition: "color 0.6s ease",
+            color: accent, marginBottom: "1.5rem",
+            transition: "color 0.6s ease",
           }}>
             {offeringLabel}
           </div>
@@ -320,7 +417,7 @@ export default function OhelOr() {
           </div>
         </div>
 
-        {/* Verse */}
+        {/* Torah verse */}
         <div style={{
           textAlign: "center", maxWidth: "600px", margin: "0 auto 4vh",
           padding: "0 2rem",
