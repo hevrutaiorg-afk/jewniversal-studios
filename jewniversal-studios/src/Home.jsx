@@ -95,7 +95,7 @@ export default function Home() {
           opacity: 0.7,
           marginBottom: '1rem',
         }}>
-          Stacy La Mell &nbsp;·&nbsp; Highwood, Illinois
+          Stacy La Mell &nbsp;·&nbsp; Artist, Educator, Creator
         </div>
 
         <h1 style={{
